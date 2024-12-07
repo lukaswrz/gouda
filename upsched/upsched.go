@@ -67,19 +67,20 @@ func (us UploadScheduler[K]) Prepare(k K, timeout time.Duration, cb func(K, erro
 		return errors.New("upload key already exists")
 	}
 
+	d := time.Second * time.Duration(timeout)
+
+	f := func() {
+		if _, ok := us.m.Get(k); ok {
+			err := us.Finish(k)
+			cb(k, err)
+		}
+	}
+
 	us.m.Set(
 		k,
 		upload{
 			timeout: timeout,
-			timer: time.AfterFunc(
-				time.Second*time.Duration(timeout),
-				func() {
-					if _, ok := us.m.Get(k); ok {
-						err := us.Finish(k)
-						cb(k, err)
-					}
-				},
-			),
+			timer:   time.AfterFunc(d, f),
 		},
 	)
 
