@@ -22,8 +22,8 @@ const (
 	AppendOpenFlags = os.O_APPEND | os.O_CREATE | os.O_WRONLY
 )
 
-// Key defines the set of types that can be used as keys in the
-// UploadScheduler. It can be any integer type or a string.
+// Key defines the set of types that can be used as keys in the Scheduler.
+// It can be any integer or string type.
 type Key interface {
 	constraints.Integer | ~string
 }
@@ -49,8 +49,8 @@ type scheduler[K Key] struct {
 	m *haxmap.Map[K, upload]
 }
 
-// NewScheduler creates a new UploadScheduler instance. It returns an
-// UploadScheduler configured to manage uploads keyed by the specified type.
+// NewScheduler creates a new Scheduler. It returns a Scheduler configured to
+// manage uploads keyed by the specified type.
 func NewScheduler[K Key]() Scheduler[K] {
 	return scheduler[K]{
 		m: haxmap.New[K, upload](),
