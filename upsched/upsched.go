@@ -22,6 +22,21 @@ const (
 	AppendOpenFlags = os.O_APPEND | os.O_CREATE | os.O_WRONLY
 )
 
+// Key defines the set of types that can be used as keys in the
+// UploadScheduler. It can be any integer type or a string.
+type Key interface {
+	constraints.Integer | ~string
+}
+
+// Scheduler manages the scheduling of multi-part uploads. It maintains
+// a map of active uploads and handles the appending of chunks, as well as
+// the automatic finalization of uploads based on a timeout.
+type Scheduler[K Key] interface {
+	Prepare(k K, timeout time.Duration, cb func(K, error)) error
+	Append(k K, chunk multipart.File, dst io.Writer) error
+	Finish(k K) error
+}
+
 // upload holds the state for a single upload, including its timeout
 // duration and an associated timer.
 type upload struct {
@@ -29,23 +44,15 @@ type upload struct {
 	timer   *time.Timer
 }
 
-// UploadKey defines the set of types that can be used as keys in the
-// UploadScheduler. It can be any integer type or a string.
-type UploadKey interface {
-	constraints.Integer | ~string
-}
-
-// UploadScheduler manages the scheduling of multi-part uploads. It maintains
-// a map of active uploads and handles the appending of chunks, as well as
-// the automatic finalization of uploads based on a timeout.
-type UploadScheduler[K UploadKey] struct {
+// scheduler implements the Scheduler interface.
+type scheduler[K Key] struct {
 	m *haxmap.Map[K, upload]
 }
 
 // NewScheduler creates a new UploadScheduler instance. It returns an
 // UploadScheduler configured to manage uploads keyed by the specified type.
-func NewScheduler[K UploadKey]() UploadScheduler[K] {
-	return UploadScheduler[K]{
+func NewScheduler[K Key]() Scheduler[K] {
+	return scheduler[K]{
 		m: haxmap.New[K, upload](),
 	}
 }
@@ -61,7 +68,7 @@ func NewScheduler[K UploadKey]() UploadScheduler[K] {
 // finished, the callback function is invoked.
 //
 // Returns an error if the key already exists in the scheduler.
-func (us UploadScheduler[K]) Prepare(k K, timeout time.Duration, cb func(K, error)) error {
+func (us scheduler[K]) Prepare(k K, timeout time.Duration, cb func(K, error)) error {
 	_, ok := us.m.Get(k)
 	if ok {
 		return errors.New("upload key already exists")
@@ -93,7 +100,7 @@ func (us UploadScheduler[K]) Prepare(k K, timeout time.Duration, cb func(K, erro
 //
 // It is recommended to use AppendOpenFlags for actual files that are passed
 // to this function.
-func (us UploadScheduler[K]) Append(k K, chunk multipart.File, dst io.Writer) error {
+func (us scheduler[K]) Append(k K, chunk multipart.File, dst io.Writer) error {
 	u, ok := us.m.Get(k)
 	if !ok {
 		return errors.New("upload key does not exist")
@@ -113,7 +120,7 @@ func (us UploadScheduler[K]) Append(k K, chunk multipart.File, dst io.Writer) er
 // Finish finalizes the upload associated with the given key. It stops the
 // associated timer and removes the upload from the scheduler's internal map.
 // If the key does not exist, an error is returned.
-func (us UploadScheduler[K]) Finish(k K) error {
+func (us scheduler[K]) Finish(k K) error {
 	u, ok := us.m.Get(k)
 	if !ok {
 		return errors.New("upload key does not exist")
